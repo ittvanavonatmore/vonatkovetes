@@ -24,12 +24,30 @@
     .delay-orange { color: orange; font-weight: bold; }
     .delay-red { color: red; font-weight: bold; }
     .delay-black { color: black; font-weight: bold; }
+  
+    .footer-note {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  background-color: rgba(255, 255, 255, 0.8);
+  color: red;
+  padding: 6px 12px;
+  border-radius: 5px;
+  font-size: 13px;
+  font-weight: bold;
+  z-index: 1000;
+  box-shadow: 0 0 5px rgba(0,0,0,0.3);
+}
+
   </style>
 </head>
 <body>
   <h2 style="margin: 10px;">Vonatok valós idejű megjelenítése Railway Map-en</h2>
   <div id="map"></div>
-
+  <div class="footer-note">
+    Az oldal a <a href="https://holavonat.hu" target="_blank" style="color: red; text-decoration: underline;">holavonat.hu</a> forráskódja alapján készült.
+  </div>
+  
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     const map = L.map("map").setView([47.0, 19.0], 7);
