@@ -2,8 +2,8 @@ name: Update Train Data
 
 on:
   schedule:
-    - cron: '*/5 * * * *'   # minden egész órában lefut
-  workflow_dispatch:       # manuális indítás lehetősége
+    - cron: '*/5 * * * *'   # 5 percenként
+  workflow_dispatch:        # manuális indítás lehetősége
 
 jobs:
   update-trains:
@@ -12,6 +12,8 @@ jobs:
     steps:
     - name: Checkout repo
       uses: actions/checkout@v3
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}  # EZ A FONTOS RÉSZ
 
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -33,3 +35,5 @@ jobs:
         git add train_data.json
         git diff --cached --quiet || git commit -m "Update train_data.json"
         git push
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
