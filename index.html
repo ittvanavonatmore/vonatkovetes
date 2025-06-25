@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8" />
+  <title>Vonatok valós idejű megjelenítése Railway Map-en</title>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    crossorigin=""
+  />
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0; padding: 0;
+      font-family: Arial, sans-serif;
+    }
+    #map {
+      height: 100vh;
+      width: 100%;
+    }
+    /* Popup delay színek */
+    .delay-green { color: green; font-weight: bold; }
+    .delay-yellow { color: goldenrod; font-weight: bold; }
+    .delay-orange { color: orange; font-weight: bold; }
+    .delay-red { color: red; font-weight: bold; }
+    .delay-black { color: black; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h2 style="margin: 10px;">Vonatok valós idejű megjelenítése Railway Map-en</h2>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const map = L.map("map").setView([47.0, 19.0], 7);
+
+    const osmLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(map);
+
+    const railwayLayer = L.tileLayer("https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://openrailwaymap.org">OpenRailwayMap</a> contributors',
+    }).addTo(map);
+
+    function delayToColorClass(delayMinutes) {
+      if (delayMinutes === null || delayMinutes === undefined || isNaN(delayMinutes)) return "";
+      if (delayMinutes <= 4) return "delay-green";
+      if (delayMinutes <= 14) return "delay-yellow";
+      if (delayMinutes <= 29) return "delay-orange";
+      if (delayMinutes <= 59) return "delay-red";
+      return "delay-black";
+    }
+
+    function delayToColor(delayMinutes) {
+      if (delayMinutes === null || delayMinutes === undefined || isNaN(delayMinutes)) return "#999";
+      if (delayMinutes <= 4) return "green";
+      if (delayMinutes <= 14) return "goldenrod";
+      if (delayMinutes <= 29) return "orange";
+      if (delayMinutes <= 59) return "red";
+      return "black";
+    }
+
+    // Kisebb jelölő: 18x18 px kör, arányosan kisebb háromszög
+    function createTrainIcon(delayMinutes, heading) {
+      const circleColor = delayToColor(delayMinutes);
+      const html = `
+        <div style="
+          background-color: ${circleColor};
+          border: 2px solid #000;
+          border-radius: 50%;
+          width: 18px; height: 18px;
+          position: relative;
+          box-shadow: 0 0 2px rgba(0,0,0,0.3);
+        ">
+          <div style="
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 0; 
+            height: 0; 
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-bottom: 9px solid black;
+            transform-origin: 50% 80%;
+            transform: translate(-50%, -60%) rotate(${heading}deg);
+            filter: drop-shadow(0 0 1px rgba(0,0,0,0.5));
+            pointer-events: none;
+          "></div>
+        </div>`;
+      return L.divIcon({
+        html,
+        className: "",
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+      });
+    }
+
+    function formatDelay(delaySeconds) {
+      if (delaySeconds === null || delaySeconds === undefined) return "-";
+      return Math.round(delaySeconds / 60);
+    }
+
+    function formatSpeed(speed) {
+      if (speed === null || speed === undefined) return "-";
+      return Math.round(speed);
+    }
+
+    function createPopupContent(train) {
+      const delaySec = train.stops && train.stops.length > 0 ? train.stops[0].a : null;
+      const delayMin = formatDelay(delaySec);
+      const delayClass = delayToColorClass(delayMin);
+      const speed = formatSpeed(train.sp);
+      const stops = train.stops || [];
+      const startStation = stops.length > 0 ? stops[0].name : "N/A";
+      const endStation = stops.length > 0 ? stops[stops.length - 1].name : "N/A";
+
+      return `
+        <b>${train.name}</b><br/>
+        Sebesség: ${speed} km/h<br/>
+        Késés: <span class="${delayClass}">${delayMin === "-" ? "-" : delayMin + " perc"}</span><br/>
+        Induló állomás: ${startStation}<br/>
+        Érkező állomás: ${endStation}
+      `;
+    }
+
+    let markers = {};
+
+    function loadTrains() {
+      fetch("train_data.json")
+        .then(res => res.json())
+        .then(data => {
+          const currentIds = new Set();
+
+          data.vehicles.forEach(train => {
+            const delaySec = train.stops && train.stops.length > 0 ? train.stops[0].a : null;
+            const delayMin = formatDelay(delaySec);
+            const icon = createTrainIcon(delayMin, train.hd);
+
+            if (markers[train.id]) {
+              markers[train.id].setLatLng([train.lat, train.lon]);
+              markers[train.id].setIcon(icon);
+              markers[train.id].getPopup().setContent(createPopupContent(train));
+            } else {
+              const marker = L.marker([train.lat, train.lon], { icon });
+              marker.addTo(map);
+              marker.bindPopup(createPopupContent(train));
+              markers[train.id] = marker;
+            }
+
+            currentIds.add(train.id);
+          });
+
+          // Töröljük a régieket
+          Object.keys(markers).forEach(id => {
+            if (!currentIds.has(id)) {
+              map.removeLayer(markers[id]);
+              delete markers[id];
+            }
+          });
+        })
+        .catch(err => console.error("Hiba a JSON betöltéskor:", err));
+    }
+
+    loadTrains();
+    setInterval(loadTrains, 10000);
+
+  </script>
+</body>
+</html>
