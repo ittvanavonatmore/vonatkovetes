@@ -3,11 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <title>Vonatok valós idejű megjelenítése Railway Map-en</title>
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    crossorigin=""
-  />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
   <style>
     html, body {
       height: 100%;
@@ -18,27 +14,50 @@
       height: 100vh;
       width: 100%;
     }
-    /* Popup delay színek */
     .delay-green { color: green; font-weight: bold; }
     .delay-yellow { color: goldenrod; font-weight: bold; }
     .delay-orange { color: orange; font-weight: bold; }
     .delay-red { color: red; font-weight: bold; }
     .delay-black { color: black; font-weight: bold; }
-  
-    .footer-note {
-  position: absolute;
-  bottom: 10px;
-  left: 10px;
-  background-color: rgba(255, 255, 255, 0.8);
-  color: red;
-  padding: 6px 12px;
-  border-radius: 5px;
-  font-size: 13px;
-  font-weight: bold;
-  z-index: 1000;
-  box-shadow: 0 0 5px rgba(0,0,0,0.3);
-}
 
+    .footer-note {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      background-color: rgba(255, 255, 255, 0.8);
+      color: red;
+      padding: 6px 12px;
+      border-radius: 5px;
+      font-size: 13px;
+      font-weight: bold;
+      z-index: 1000;
+      box-shadow: 0 0 5px rgba(0,0,0,0.3);
+    }
+
+    .popup-table-container {
+      overflow-x: auto;
+      max-height: 300px;
+    }
+
+    .popup-table-container table {
+      font-size: 12px;
+      border-collapse: collapse;
+      width: 100%;
+    }
+
+    .popup-table-container th, .popup-table-container td {
+      border: 1px solid #ccc;
+      padding: 2px 4px;
+      text-align: center;
+    }
+
+    .popup-table-container th {
+      background-color: #f0f0f0;
+    }
+
+    .passed {
+      opacity: 0.5;
+    }
   </style>
 </head>
 <body>
@@ -47,15 +66,14 @@
   <div class="footer-note">
     Az oldal a <a href="https://holavonat.hu" target="_blank" style="color: red; text-decoration: underline;">holavonat.hu</a> forráskódja alapján készült.
   </div>
-  
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     const map = L.map("map").setView([47.0, 19.0], 7);
 
     const osmLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(map);
 
     const railwayLayer = L.tileLayer("https://{s}.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png", {
@@ -64,7 +82,7 @@
     }).addTo(map);
 
     function delayToColorClass(delayMinutes) {
-      if (delayMinutes === null || delayMinutes === undefined || isNaN(delayMinutes)) return "";
+      if (delayMinutes === null || isNaN(delayMinutes)) return "";
       if (delayMinutes <= 4) return "delay-green";
       if (delayMinutes <= 14) return "delay-yellow";
       if (delayMinutes <= 29) return "delay-orange";
@@ -73,7 +91,7 @@
     }
 
     function delayToColor(delayMinutes) {
-      if (delayMinutes === null || delayMinutes === undefined || isNaN(delayMinutes)) return "#999";
+      if (delayMinutes === null || isNaN(delayMinutes)) return "#999";
       if (delayMinutes <= 4) return "green";
       if (delayMinutes <= 14) return "goldenrod";
       if (delayMinutes <= 29) return "orange";
@@ -81,7 +99,62 @@
       return "black";
     }
 
-    // Kisebb jelölő: 18x18 px kör, arányosan kisebb háromszög
+    function formatTime(str) {
+      return str ? str : "";
+    }
+
+    function getMostRecentValidDelay(train) {
+      if (!train.stops || train.stops.length === 0) return null;
+      for (let i = train.stops.length - 1; i >= 0; i--) {
+        const stop = train.stops[i];
+        if (stop && typeof stop.a === "number") {
+          return Math.round(stop.a / 60);
+        }
+      }
+      return null;
+    }
+
+    function createPopupContent(train) {
+      const delayMin = getMostRecentValidDelay(train);
+      const delayClass = delayToColorClass(delayMin);
+      const speed = train.sp !== null ? Math.round(train.sp) : "-";
+      const stops = train.stops || [];
+
+      const header = `
+        <b>${train.name}</b><br>
+        ${train.to || ""}<br>
+        Sebesség: ${speed} km/h<br>
+        Késés: <span class="${delayClass}">${delayMin === null ? "-" : delayMin + " perc késés"}</span><br>
+      `;
+
+      const tableRows = stops.map((stop, index) => {
+        const isPassed = stop.passed ? "passed" : "";
+        const plannedArr = stop.ar || "";
+        const actualArr = stop.a !== undefined ? `<span class="${stop.a !== null ? "delayed" : ""}">${formatTime(stop.aStr)}</span>` : "";
+        const plannedDep = stop.dr || "";
+        const actualDep = stop.d !== undefined ? `<span class="${stop.d !== null ? "delayed" : ""}">${formatTime(stop.dStr)}</span>` : "";
+        return `
+          <tr class="${isPassed}">
+            <td>${stop.name}</td>
+            <td>${plannedArr}<br>${actualArr}</td>
+            <td>${plannedDep}<br>${actualDep}</td>
+            <td>${stop.plat || "-"}</td>
+          </tr>`;
+      }).join("");
+
+      return `
+        ${header}
+        <div class="popup-table-container">
+          <table>
+            <thead>
+              <tr><th>Állomás</th><th>Érk.</th><th>Ind.</th><th>Vágány</th></tr>
+            </thead>
+            <tbody>${tableRows}</tbody>
+          </table>
+        </div>
+      `;
+    }
+
     function createTrainIcon(delayMinutes, heading) {
       const circleColor = delayToColor(delayMinutes);
       const html = `
@@ -115,34 +188,6 @@
       });
     }
 
-    function formatDelay(delaySeconds) {
-      if (delaySeconds === null || delaySeconds === undefined) return "-";
-      return Math.round(delaySeconds / 60);
-    }
-
-    function formatSpeed(speed) {
-      if (speed === null || speed === undefined) return "-";
-      return Math.round(speed);
-    }
-
-    function createPopupContent(train) {
-      const delaySec = train.stops && train.stops.length > 0 ? train.stops[0].a : null;
-      const delayMin = formatDelay(delaySec);
-      const delayClass = delayToColorClass(delayMin);
-      const speed = formatSpeed(train.sp);
-      const stops = train.stops || [];
-      const startStation = stops.length > 0 ? stops[0].name : "N/A";
-      const endStation = stops.length > 0 ? stops[stops.length - 1].name : "N/A";
-
-      return `
-        <b>${train.name}</b><br/>
-        Sebesség: ${speed} km/h<br/>
-        Késés: <span class="${delayClass}">${delayMin === "-" ? "-" : delayMin + " perc"}</span><br/>
-        Induló állomás: ${startStation}<br/>
-        Érkező állomás: ${endStation}
-      `;
-    }
-
     let markers = {};
 
     function loadTrains() {
@@ -152,8 +197,7 @@
           const currentIds = new Set();
 
           data.vehicles.forEach(train => {
-            const delaySec = train.stops && train.stops.length > 0 ? train.stops[0].a : null;
-            const delayMin = formatDelay(delaySec);
+            const delayMin = getMostRecentValidDelay(train);
             const icon = createTrainIcon(delayMin, train.hd);
 
             if (markers[train.id]) {
@@ -170,7 +214,6 @@
             currentIds.add(train.id);
           });
 
-          // Töröljük a régieket
           Object.keys(markers).forEach(id => {
             if (!currentIds.has(id)) {
               map.removeLayer(markers[id]);
@@ -183,7 +226,6 @@
 
     loadTrains();
     setInterval(loadTrains, 10000);
-
   </script>
 </body>
 </html>
